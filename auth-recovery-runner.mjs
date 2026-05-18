@@ -92,6 +92,7 @@ function parseCli(argv) {
   let fromLineNumber = null;
   let fallbackRecovery = false;
   let maxFailures = Number.POSITIVE_INFINITY;
+  let skipExisting = true;
 
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i += 1) {
@@ -102,6 +103,10 @@ function parseCli(argv) {
     }
     if (arg === '--fallback-recovery') {
       fallbackRecovery = true;
+      continue;
+    }
+    if (arg === '--no-skip-existing') {
+      skipExisting = false;
       continue;
     }
     if (arg === '--max-failures') {
@@ -147,7 +152,7 @@ function parseCli(argv) {
     }
   }
 
-  return { accountsFile, dryRun, lineNumber, fromLineNumber, fallbackRecovery, maxFailures };
+  return { accountsFile, dryRun, lineNumber, fromLineNumber, fallbackRecovery, maxFailures, skipExisting };
 }
 
 const {
@@ -157,6 +162,7 @@ const {
   fromLineNumber: FROM_LINE_NUMBER,
   fallbackRecovery: FALLBACK_RECOVERY,
   maxFailures: MAX_FAILURES,
+  skipExisting: SKIP_EXISTING,
 } = parseCli(process.argv);
 
 function timestamp() {
@@ -283,6 +289,74 @@ function filterAccounts(accounts, lineNumber, fromLineNumber) {
     return accounts.filter((account) => account.lineNumber >= fromLineNumber);
   }
   return accounts;
+}
+
+function parseCodexAuthList(output) {
+  const entries = new Map();
+  for (const rawLine of String(output).split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const match = line.match(/^\*?\s*\d+\s+(\S+@\S+)\s+(.*)$/);
+    if (!match) continue;
+
+    const [, email, statusText] = match;
+    entries.set(email.toLowerCase(), {
+      email,
+      statusText: statusText.trim(),
+    });
+  }
+  return entries;
+}
+
+function isRegistryEntryUsable(entry) {
+  if (!entry) return false;
+  const unhealthyPattern = /\b(401|403|timedout|timeout|token_expired|expired|unauthorized|forbidden|error|failed|invalid)\b/i;
+  return !unhealthyPattern.test(entry.statusText);
+}
+
+function filterExistingUsableAccounts(accounts, registryEntries) {
+  const selected = [];
+  const skipped = [];
+
+  for (const account of accounts) {
+    const entry = registryEntries.get(account.primaryEmail.toLowerCase());
+    if (isRegistryEntryUsable(entry)) {
+      skipped.push({ account, entry });
+    } else {
+      selected.push(account);
+    }
+  }
+
+  return { selected, skipped };
+}
+
+async function collectChildOutput(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        reject(new Error(`${command} ${args.join(' ')} exited with code ${code}: ${stderr.trim() || stdout.trim()}`));
+      }
+    });
+  });
+}
+
+async function loadCodexAuthRegistry() {
+  const { stdout } = await collectChildOutput('codex-auth', ['list']);
+  return parseCodexAuthList(stdout);
 }
 
 async function waitForVisibleAny(page, selectors, timeout = DEFAULT_TIMEOUT) {
@@ -721,6 +795,33 @@ async function main() {
     return;
   }
 
+  if (SKIP_EXISTING) {
+    try {
+      info('Checking codex-auth registry for already usable accounts');
+      const registryEntries = await loadCodexAuthRegistry();
+      const { selected, skipped } = filterExistingUsableAccounts(accounts, registryEntries);
+      for (const { account, entry } of skipped) {
+        info(`Skipping ${accountLabel(account)}; already listed with usable status: ${entry.statusText}`);
+      }
+      for (const account of selected) {
+        const entry = registryEntries.get(account.primaryEmail.toLowerCase());
+        if (entry) {
+          warn(`Retrying ${accountLabel(account)}; existing registry status is unhealthy: ${entry.statusText}`);
+        }
+      }
+      accounts = selected;
+    } catch (err) {
+      warn(`Unable to inspect codex-auth registry; continuing without skip-existing preflight: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  } else {
+    warn('Skip-existing preflight disabled; all matched accounts will run');
+  }
+
+  if (accounts.length === 0) {
+    success('All matched accounts are already listed with usable status; nothing to run.');
+    return;
+  }
+
   if (DRY_RUN) {
     info('Dry-run mode enabled; browser and sync steps will be skipped');
     for (const [index, account] of accounts.entries()) {
@@ -769,7 +870,11 @@ export {
   LINE_NUMBER,
   FROM_LINE_NUMBER,
   MAX_FAILURES,
+  SKIP_EXISTING,
   accountLabel,
+  filterExistingUsableAccounts,
+  isRegistryEntryUsable,
+  parseCodexAuthList,
   parseCli,
   maskEmail,
   parseAccountLine,

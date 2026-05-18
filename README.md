@@ -28,6 +28,7 @@ node auth-recovery-runner.mjs accounts.txt --line 8
 node auth-recovery-runner.mjs accounts.txt --from-line 2
 node auth-recovery-runner.mjs accounts.txt --max-failures 1
 node auth-recovery-runner.mjs accounts.txt --fallback-recovery
+node auth-recovery-runner.mjs accounts.txt --no-skip-existing
 ```
 
 ## Behavior
@@ -39,6 +40,8 @@ node auth-recovery-runner.mjs accounts.txt --fallback-recovery
 - Clicks "Use your password" when Microsoft shows a passkey-first flow.
 - Clicks the Codex consent "Continue" button when it appears.
 - Saves screenshots and DOM snapshots under `auth-run-artifacts/` on failure.
+- Runs `codex-auth list` before browser work and skips accounts already listed with usable status.
+- Retries listed accounts when their registry status contains unhealthy markers like `401`, `token_expired`, `TimedOut`, `expired`, `error`, `failed`, or `invalid`.
 
 ## Local Requirements
 

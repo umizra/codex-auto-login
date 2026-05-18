@@ -17,9 +17,12 @@ import {
   accountLabel,
   buildPlannedActions,
   filterAccounts,
+  filterExistingUsableAccounts,
+  isRegistryEntryUsable,
   maskEmail,
   parseAccountLine,
   parseCli,
+  parseCodexAuthList,
   readAccounts,
 } from './auth-recovery-runner.mjs';
 
@@ -101,6 +104,46 @@ test('filterAccounts selects one line or a from-line range', () => {
   ]);
 });
 
+test('parseCodexAuthList extracts account rows and status text', () => {
+  const output = [
+    '     ACCOUNT                              PLAN  5H                     WEEKLY                 LAST ACTIVITY',
+    '-----------------------------------------------------------------------------------------------------------',
+    '  01 alpha@example.com                    Free  97% (03:41 on 25 May)  97% (03:41 on 25 May)  Now',
+    '* 02 beta@example.com                     Plus  401 token_expired      401 token_expired      6d ago',
+  ].join('\n');
+
+  const entries = parseCodexAuthList(output);
+
+  assert.equal(entries.size, 2);
+  assert.match(entries.get('alpha@example.com').statusText, /97%/);
+  assert.match(entries.get('beta@example.com').statusText, /401 token_expired/);
+});
+
+test('isRegistryEntryUsable rejects expired and error statuses', () => {
+  assert.equal(isRegistryEntryUsable({ statusText: 'Free 97% (03:41) 97% (03:41) Now' }), true);
+  assert.equal(isRegistryEntryUsable({ statusText: 'Plus 401 token_expired 401 token_expired 6d ago' }), false);
+  assert.equal(isRegistryEntryUsable({ statusText: 'Free TimedOut TimedOut 2d ago' }), false);
+  assert.equal(isRegistryEntryUsable({ statusText: 'Free invalid failed Now' }), false);
+  assert.equal(isRegistryEntryUsable(null), false);
+});
+
+test('filterExistingUsableAccounts skips only healthy listed accounts', () => {
+  const accounts = [
+    { lineNumber: 1, primaryEmail: 'healthy@example.com' },
+    { lineNumber: 2, primaryEmail: 'expired@example.com' },
+    { lineNumber: 3, primaryEmail: 'new@example.com' },
+  ];
+  const registryEntries = parseCodexAuthList([
+    '  01 healthy@example.com Free 97% (03:41) 97% (03:41) Now',
+    '  02 expired@example.com Free 401 token_expired 401 token_expired 6d ago',
+  ].join('\n'));
+
+  const { selected, skipped } = filterExistingUsableAccounts(accounts, registryEntries);
+
+  assert.deepEqual(skipped.map(({ account }) => account.primaryEmail), ['healthy@example.com']);
+  assert.deepEqual(selected.map((account) => account.primaryEmail), ['expired@example.com', 'new@example.com']);
+});
+
 test('accountLabel reports the original source line after filtering', () => {
   const account = { lineNumber: 8, primaryEmail: 'filtered.user@example.com' };
 
@@ -154,6 +197,12 @@ test('parseCli recognizes opt-in fallback recovery', () => {
   const parsed = parseCli(['node', 'auth-recovery-runner.mjs', 'custom-accounts.txt', '--fallback-recovery']);
 
   assert.equal(parsed.fallbackRecovery, true);
+});
+
+test('parseCli recognizes skip-existing override', () => {
+  const parsed = parseCli(['node', 'auth-recovery-runner.mjs', 'custom-accounts.txt', '--no-skip-existing']);
+
+  assert.equal(parsed.skipExisting, false);
 });
 
 test('parseCli recognizes max failure limit', () => {
