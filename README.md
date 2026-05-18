@@ -48,8 +48,17 @@ node auth-recovery-runner.mjs accounts.txt --no-skip-existing
 ## Local Requirements
 
 - Node.js 20+ recommended.
-- `codex-auth` available on `PATH`.
+- `codex-auth` built from `https://github.com/umizra/codex-auth/tree/batch-login` and available on `PATH`.
 - Google Chrome installed at `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, or set `CHROME_PATH`.
+
+This runner requires the forked `codex-auth batch-login` command. The upstream `Loongphy/codex-auth` repository does not currently include that command.
+
+```sh
+git clone https://github.com/umizra/codex-auth.git
+cd codex-auth
+git checkout batch-login
+zig build
+```
 
 ## Safety
 
