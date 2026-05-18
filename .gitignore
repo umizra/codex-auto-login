@@ -1,0 +1,20 @@
+node_modules/
+.DS_Store
+*.log
+.env
+
+# Real credential files must stay local.
+accounts*.txt
+!accounts.example.txt
+!fixtures/mock-accounts.txt
+
+# Browser/session/runtime artifacts.
+.auth-sessions/
+.debug-sessions/
+.playwright-mcp/
+auth-run-artifacts/
+debug-openai-line4*/
+
+# Keep the local browser-open shim tracked.
+.auth-bin/*
+!.auth-bin/open

@@ -1,0 +1,2 @@
+alpha@example.com:service-pass-1:email-pass-1:fallback1@example.net:fallback-pass-1
+beta@example.com:service-pass-2:email-pass-2:fallback2@example.net:fallback-pass-2

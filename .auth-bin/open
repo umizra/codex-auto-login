@@ -1,0 +1,3 @@
+#!/bin/sh
+# Suppress macOS default-browser launches from `codex login`.
+exit 0

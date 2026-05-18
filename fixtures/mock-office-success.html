@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mock Office Success</title>
+    <style>
+      body { font-family: sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+      form { display: grid; gap: 12px; }
+      .hidden { display: none; }
+      .message { margin-top: 16px; padding: 12px; background: #eef7ee; }
+    </style>
+  </head>
+  <body>
+    <h1>Mock Office</h1>
+    <form id="auth-form">
+      <label>
+        Email
+        <input type="email" name="loginfmt" autocomplete="username" aria-label="email" />
+      </label>
+      <label id="password-label" class="hidden">
+        Password
+        <input type="password" name="passwd" autocomplete="current-password" aria-label="password" />
+      </label>
+      <button type="submit" id="submit-button">Next</button>
+      <button type="button" class="hidden" id="stay-signed-in">Stay signed in</button>
+    </form>
+    <div class="message hidden" id="result">Signed in successfully.</div>
+    <script>
+      const form = document.getElementById('auth-form');
+      const passwordLabel = document.getElementById('password-label');
+      const result = document.getElementById('result');
+      const submitButton = document.getElementById('submit-button');
+      let stage = 0;
+
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        stage += 1;
+        if (stage === 1) {
+          passwordLabel.classList.remove('hidden');
+          submitButton.textContent = 'Sign in';
+          return;
+        }
+        result.classList.remove('hidden');
+        document.body.dataset.signedIn = 'true';
+        document.body.dataset.email = form.querySelector('input[name="loginfmt"]').value;
+      });
+    </script>
+  </body>
+</html>

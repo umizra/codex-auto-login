@@ -1,0 +1,1 @@
+primary@example.com:service-password:email-password:fallback@example.net:fallback-password
