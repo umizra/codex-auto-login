@@ -27,6 +27,7 @@ Useful options:
 node auth-recovery-runner.mjs accounts.txt --line 8
 node auth-recovery-runner.mjs accounts.txt --from-line 2
 node auth-recovery-runner.mjs accounts.txt --max-failures 1
+node auth-recovery-runner.mjs accounts.txt --concurrency 10
 node auth-recovery-runner.mjs accounts.txt --fallback-recovery
 node auth-recovery-runner.mjs accounts.txt --no-skip-existing
 ```
@@ -42,6 +43,7 @@ node auth-recovery-runner.mjs accounts.txt --no-skip-existing
 - Saves screenshots and DOM snapshots under `auth-run-artifacts/` on failure.
 - Runs `codex-auth list` before browser work and skips accounts already listed with usable status.
 - Retries listed accounts when their registry status contains unhealthy markers like `401`, `token_expired`, `TimedOut`, `expired`, `error`, `failed`, or `invalid`.
+- Supports opt-in parallel browser execution with `--concurrency <n>`. Keep the default sequential mode unless the local `codex-auth` registry can tolerate concurrent writes.
 
 ## Local Requirements
 

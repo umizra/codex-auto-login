@@ -93,6 +93,7 @@ function parseCli(argv) {
   let fallbackRecovery = false;
   let maxFailures = Number.POSITIVE_INFINITY;
   let skipExisting = true;
+  let concurrency = 1;
 
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i += 1) {
@@ -119,6 +120,19 @@ function parseCli(argv) {
         throw new Error('--max-failures must be a positive integer');
       }
       maxFailures = parsed;
+      i += 1;
+      continue;
+    }
+    if (arg === '--concurrency') {
+      const value = args[i + 1];
+      if (!value) {
+        throw new Error('--concurrency requires a value');
+      }
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== value) {
+        throw new Error('--concurrency must be a positive integer');
+      }
+      concurrency = parsed;
       i += 1;
       continue;
     }
@@ -152,7 +166,16 @@ function parseCli(argv) {
     }
   }
 
-  return { accountsFile, dryRun, lineNumber, fromLineNumber, fallbackRecovery, maxFailures, skipExisting };
+  return {
+    accountsFile,
+    dryRun,
+    lineNumber,
+    fromLineNumber,
+    fallbackRecovery,
+    maxFailures,
+    skipExisting,
+    concurrency,
+  };
 }
 
 const {
@@ -163,6 +186,7 @@ const {
   fallbackRecovery: FALLBACK_RECOVERY,
   maxFailures: MAX_FAILURES,
   skipExisting: SKIP_EXISTING,
+  concurrency: CONCURRENCY,
 } = parseCli(process.argv);
 
 function timestamp() {
@@ -744,7 +768,7 @@ async function connectToAccountChrome(chromium, account) {
   };
 }
 
-async function processAccount(chromium, account, index) {
+async function processAccount(chromium, account) {
   const label = accountLabel(account);
   info(`Starting ${label}`);
   const startedAt = Date.now();
@@ -775,6 +799,33 @@ async function processAccount(chromium, account, index) {
     await browserSession.close();
     info(`Closed isolated Chrome profile for ${label}`);
     info(`Finished ${label} in ${Date.now() - startedAt}ms`);
+  }
+}
+
+async function processAccountsWithConcurrency(chromium, accounts) {
+  let nextIndex = 0;
+  let failureCount = 0;
+  const workerCount = Math.min(CONCURRENCY, accounts.length);
+
+  async function worker(workerIndex) {
+    while (nextIndex < accounts.length && failureCount < MAX_FAILURES) {
+      const account = accounts[nextIndex];
+      nextIndex += 1;
+      info(`Worker ${workerIndex + 1}/${workerCount} picked ${accountLabel(account)}`);
+      const ok = await processAccount(chromium, account);
+      if (!ok) {
+        failureCount += 1;
+        if (failureCount >= MAX_FAILURES) {
+          error(`Stopping new work after ${failureCount} failure(s); --max-failures=${MAX_FAILURES}`);
+        }
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, (_, index) => worker(index)));
+
+  if (failureCount >= MAX_FAILURES) {
+    process.exitCode = 1;
   }
 }
 
@@ -837,20 +888,12 @@ async function main() {
   if (HEADLESS) {
     warn('HEADLESS=true is ignored for real Chrome CDP auth; Chrome launches visibly to avoid OpenAI fresh-profile 403s.');
   }
-  info('Chrome will launch one isolated real-browser profile per account over CDP');
-
-  let failureCount = 0;
-  for (const [index, account] of accounts.entries()) {
-    const ok = await processAccount(chromium, account, index);
-    if (!ok) {
-      failureCount += 1;
-      if (failureCount >= MAX_FAILURES) {
-        error(`Stopping after ${failureCount} failure(s); --max-failures=${MAX_FAILURES}`);
-        process.exitCode = 1;
-        break;
-      }
-    }
+  info(`Chrome will launch one isolated real-browser profile per account over CDP; concurrency=${CONCURRENCY}`);
+  if (CONCURRENCY > 1) {
+    warn('Parallel mode starts multiple codex-auth children at once; use only when the local registry tolerates concurrent writes.');
   }
+
+  await processAccountsWithConcurrency(chromium, accounts);
 }
 
 export {
@@ -871,6 +914,7 @@ export {
   FROM_LINE_NUMBER,
   MAX_FAILURES,
   SKIP_EXISTING,
+  CONCURRENCY,
   accountLabel,
   filterExistingUsableAccounts,
   isRegistryEntryUsable,

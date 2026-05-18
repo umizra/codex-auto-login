@@ -211,6 +211,19 @@ test('parseCli recognizes max failure limit', () => {
   assert.equal(parsed.maxFailures, 2);
 });
 
+test('parseCli recognizes concurrency limit', () => {
+  const parsed = parseCli(['node', 'auth-recovery-runner.mjs', 'custom-accounts.txt', '--concurrency', '10']);
+
+  assert.equal(parsed.concurrency, 10);
+});
+
+test('parseCli rejects invalid concurrency limit', () => {
+  assert.throws(
+    () => parseCli(['node', 'auth-recovery-runner.mjs', 'custom-accounts.txt', '--concurrency', '0']),
+    /positive integer/,
+  );
+});
+
 test('parseCli rejects invalid max failure limit', () => {
   assert.throws(
     () => parseCli(['node', 'auth-recovery-runner.mjs', 'custom-accounts.txt', '--max-failures', '0']),
